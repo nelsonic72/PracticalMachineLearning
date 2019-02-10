@@ -1,0 +1,117 @@
+---
+title: "Practical Machine Learning - Course Project"
+author: "Eric John Nelson"
+date: "February 9, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(caret)
+library(rattle)
+library(knitr)
+library(randomForest)
+library(rpart)
+library(rpart.plot)
+
+```
+
+## Background
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement.  A group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. 
+
+In this project, my goal was to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants to predict the manner in which they did the exercise (classe variable).  The data provided consists of a training set and a test set.
+
+## Data
+
+First load the data before an initial basic analysis
+
+```{r }
+training <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", header=TRUE)
+test <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", header=TRUE)
+```
+
+Lets look at the data before making any assumptions and attempting cleanup
+
+```{r }
+str(training)
+```
+It appears that there are 19622 observations in 160 variables.  The first 7 variables are not related to the accelerometers.  Also, many variables contain mostly NA values.  We'll attempt to remove all of the non-revelant variables and near zero variance variables.
+
+```{r}
+training <- training[,-c(1:7)]
+test <- test[,-c(1:7)]
+training <- training[, colSums(is.na(training))==0]
+test <-test[, colSums(is.na(test))==0]
+nzvTrain <- nearZeroVar(training, saveMetrics = TRUE)
+nzvTest <- nearZeroVar(test, saveMetrics = TRUE)
+training <- training[, nzvTrain$nzv==FALSE]
+test <- test[, nzvTest$nzv==FALSE]
+dim(training)
+dim(test)
+```
+We now have only 53 relevant variables with which to find an accurate prediction model to determine classe.  Before we move on to creating our potential predictive models we'll need to partian the training set into an initial training data set and testing set to evaluate accuracy of our predictive models.  This will allow us to perform cross validation on our various models to determine the optimal method of prediction.
+```{r}
+set.seed(1234)
+splitTrain <- createDataPartition(training$classe, p=0.75, list=FALSE)
+trainSet <- training[splitTrain,]
+testSet <- training[-splitTrain,]
+dim(trainSet)
+dim(testSet)
+```
+
+## Prective Models
+We will create three different models:
+
+1.  Classification Tree
+2.  Random Forest
+3.  Gradient Boosted Model
+
+For each we'll create a predictive model using the trainSet dataset.  Each predicitive model will be evaluated for accuracy via cross validation using the testSet dataset.
+
+### Classification Tree
+First, we'll train the model for a classification tree and then plot it.
+```{r}
+set.seed(1234)
+modelCT <- rpart(classe~., data=trainSet, method="class")
+fancyRpartPlot(modelCT)
+```
+
+Now we can assess the model's accuracy using the testSet dataset.
+```{r}
+predictCT <- predict(modelCT, newdata=testSet, type="class")
+cmCT <- confusionMatrix(predictCT, testSet$classe)
+cmCT$overall[1]
+```
+We can see that the accuracy of our classification tree model is roughly 74%.
+
+### Random Forest
+Second, we'll train the model using the random forest medthod then assess the accuracy.
+```{r}
+set.seed(1234)
+modelRF <- randomForest(classe~., data=trainSet)
+predictRF <- predict(modelRF, newdata=testSet, type="class")
+cmRF <- confusionMatrix(predictRF, testSet$classe)
+cmRF$overall[1]
+```
+We can see that the accuracy of our random forest model is roughly 99.5%.
+
+## Gradient Boosted Model
+Lastly, we'll train the model using the Gradient boosted model.
+```{r}
+set.seed(1234)
+controlGBM <- trainControl(method="cv", number=5)
+modelGBM <- train(classe~., data=trainSet, method="gbm", trControl=controlGBM, verbose=FALSE)
+predictGBM <- predict(modelGBM, newdata=testSet)
+cmGBM <- confusionMatrix(predictGBM, testSet$classe)
+cmGBM$overall[1]
+```
+We can see that the accuracy of our gradient boosted model is 96.6%
+
+This makes our randome forest model the best predictor for the classe variable.
+
+## Predicting against the provided test data
+We will use the random forest model developed above to predict the classe variable for each of the 20 provided cases.  The outcomes will be submited with this document.
+```{r}
+outcome<-predict(modelRF, newdata=test)
+outcome
+```
